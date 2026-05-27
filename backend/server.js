@@ -15,7 +15,7 @@ const DB_PATH = path.join(__dirname, 'db.json')
 const app = express()
 const upload = multer({ dest: 'uploads/' })
 
-app.use(cors())
+app.use(cors({ origin: '*' }))
 app.use(express.json())
 
 const readDB = () => {
