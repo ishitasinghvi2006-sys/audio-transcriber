@@ -5,6 +5,7 @@ import dotenv from 'dotenv'
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { createClient } from '@deepgram/sdk'
 
 dotenv.config()
 
@@ -14,18 +15,13 @@ const DB_PATH = path.join(__dirname, 'db.json')
 
 const app = express()
 const upload = multer({ dest: 'uploads/' })
+const deepgram = createClient(process.env.DEEPGRAM_API_KEY)
 
 app.use(cors({ origin: '*' }))
 app.use(express.json())
 
-const readDB = () => {
-  const data = fs.readFileSync(DB_PATH, 'utf-8')
-  return JSON.parse(data)
-}
-
-const writeDB = (data) => {
-  fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2))
-}
+const readDB = () => JSON.parse(fs.readFileSync(DB_PATH, 'utf-8'))
+const writeDB = (data) => fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2))
 
 app.get('/', (req, res) => {
   res.json({ message: 'Audio Transcriber API is running!' })
@@ -37,10 +33,23 @@ app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
       return res.status(400).json({ error: 'No audio file uploaded' })
     }
 
+    console.log('Transcribing:', req.file.originalname)
+    const audioBuffer = fs.readFileSync(req.file.path)
+
+    const { result, error } = await deepgram.listen.prerecorded.transcribeFile(
+      audioBuffer,
+      { model: 'nova-2', smart_format: true, punctuate: true }
+    )
+
+    if (error) throw new Error(error.message)
+
+    const transcript = result.results.channels[0].alternatives[0].transcript
+    fs.unlinkSync(req.file.path)
+
     const newEntry = {
       id: Date.now().toString(),
       filename: req.file.originalname,
-      transcript: 'Transcription coming in Day 4',
+      transcript: transcript || 'No speech detected',
       createdAt: new Date().toISOString()
     }
 
@@ -50,6 +59,7 @@ app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
 
     res.json(newEntry)
   } catch (error) {
+    console.error('Error:', error)
     res.status(500).json({ error: error.message })
   }
 })
